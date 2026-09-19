@@ -1,0 +1,8 @@
+node_modules/
+lib/
+# CI installs from package-lock.json; a pnpm lockfile here would only drift.
+pnpm-lock.yaml
+*.tgz
+coverage/
+.env
+.verification-root

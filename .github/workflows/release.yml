@@ -1,0 +1,15 @@
+# Thin caller. The tag prefix keeps this plugin's releases apart from the other
+# plugins in the repository; the release steps live on main.
+name: release
+
+on:
+  push:
+    tags: ['manager-v*']
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    uses: x6nux/dsh-plugins/.github/workflows/plugin-release.yml@main
+    with:
+      plugin: manager
