@@ -1,0 +1,17 @@
+# Thin caller. Workflow files are read from the ref that triggered the event,
+# so this has to live on the plugin branch; the steps live on main and are
+# shared by every plugin.
+name: ci
+
+on:
+  push:
+    branches: ['plugin/**']
+  pull_request:
+
+jobs:
+  ci:
+    permissions:
+      contents: read
+    uses: x6nux/dsh-plugins/.github/workflows/plugin-ci.yml@main
+    with:
+      plugin: opencode
