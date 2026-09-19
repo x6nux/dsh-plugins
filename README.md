@@ -25,7 +25,9 @@ GitHub Actions 从**触发事件的那个 ref** 读取工作流文件，所以�
 | opencode | [`plugin/opencode`](../../tree/plugin/opencode) | `dsh-x6nux-opencode` | 在 DSH 中使用 OpenCode Go 订阅模型：流式回复、工具调用、图片输入、Web 设置页、套餐用量 |
 | manager | [`plugin/manager`](../../tree/plugin/manager) | `dsh-x6nux-plugin-hub` | 在设置页里安装、更新、卸载、启停本仓库的插件，升级用的 cache-buster 自动拼好 |
 
-插件的兼容版本各自声明，不必一致：manager 依赖 `pluginManager` 远端，那是 `0.1.6-alpha.2` 才加进 `dsh-api-remotes` 装配的，所以它只兼容该版本；opencode 兼容四个版本。
+两个插件都兼容最新三个 DSH 版本（opencode 还多兼容一个 `0.1.5-rc.1`）。兼容版本由各插件的 `peerDependencies` 自行声明，不必一致。
+
+manager 在三个版本上的**能力**分两档：`0.1.6-alpha.2` 有 `pluginManager` 远端，页面能装卸启停；`0.1.5-rc.2` 和 `0.1.6-alpha.1` 的 host 侧只有只读的 `pluginInventory`（`@deepseek-ai/dsh-plugin-manager` 这个包只发布过 `0.1.6-alpha.2`），页面在那两档显示状态并给出对应的 `dsh plugin` 命令，不提供按不动的按钮。
 
 ## 安装
 
