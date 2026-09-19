@@ -13,6 +13,7 @@ main
 └── .github/workflows/  共享工作流（plugin-ci、plugin-release 为 workflow_call；dsh-compat 为定时）
 
 plugin/opencode         OpenCode Go 订阅模型插件（包名 dsh-x6nux-opencode）
+plugin/manager          插件管理面板（包名 dsh-x6nux-plugin-hub）
 ```
 
 GitHub Actions 从**触发事件的那个 ref** 读取工作流文件，所以只放在 `main` 上的工作流不会因为 push 到插件分支而运行。因此每个插件分支保留两个几行长的 caller（`ci.yml`、`release.yml`），用 `workflow_call` 指向 `main` 上的实现，逻辑仍然只有一份。`dsh-compat.yml` 是定时任务，`schedule` 和 `workflow_dispatch` 总是读默认分支，所以它只存在于 `main`。
@@ -22,6 +23,9 @@ GitHub Actions 从**触发事件的那个 ref** 读取工作流文件，所以�
 | 插件 | 分支 | 包名 | 说明 |
 |---|---|---|---|
 | opencode | [`plugin/opencode`](../../tree/plugin/opencode) | `dsh-x6nux-opencode` | 在 DSH 中使用 OpenCode Go 订阅模型：流式回复、工具调用、图片输入、Web 设置页、套餐用量 |
+| manager | [`plugin/manager`](../../tree/plugin/manager) | `dsh-x6nux-plugin-hub` | 在设置页里安装、更新、卸载、启停本仓库的插件，升级用的 cache-buster 自动拼好 |
+
+插件的兼容版本各自声明，不必一致：manager 依赖 `pluginManager` 远端，那是 `0.1.6-alpha.2` 才加进 `dsh-api-remotes` 装配的，所以它只兼容该版本；opencode 兼容四个版本。
 
 ## 安装
 
@@ -59,8 +63,8 @@ git push origin opencode-v0.2.1
 `dsh-compat` 每 6 小时跑一次，也可以手动触发。它遍历所有 `plugin/*` 分支，把 npm 上 `@deepseek-ai/dsh` 的已发布版本减去插件已声明支持的版本，对每个更新的候选版本跑三层验证：
 
 1. **typecheck** — 两个程序对着候选版本的类型声明编译。覆盖源码静态引用的每一个宿主导出，少一个 tsc 就报错。
-2. **offload** — 图片卸载词汇是通过类型断言在运行时取的，tsc 看不见，所以单独探测候选版本是否还提供其中一套。
-3. **smoke** — 建一个和 `dsh plugin add` 同布局的 pnpm profile，先确认插件自身解析到的宿主确实是候选版本（否则会测成另一个版本而全绿），再经真实 Cordis Loader 加载并跑流式请求。
+2. **probe** — 源码里通过类型断言在运行时取的宿主符号 tsc 看不见，需要单独探测。这一层由插件自己实现（`scripts/compat-probe.mjs`），共享脚本只负责调用；没有这个文件的插件跳过该层。
+3. **smoke** — 建一个和 `dsh plugin add` 同布局的 pnpm profile（插件声明的每个宿主 peer 都按候选版本钉住，否则 pnpm 会自己挑范围内最新的），先确认插件自身解析到的宿主确实是候选版本（否则会测成另一个版本而全绿），再经真实 Cordis Loader 加载并跑插件自己的 `verify:installed`。
 
 通过 → 在 `compat/<插件>-dsh-<版本>` 分支上把版本加进 peer 范围和 README，对插件分支开 PR。
 失败 → 开一个标题为 `DSH <版本> 与 <插件> 不兼容` 的 issue，正文带失败阶段和完整输出。

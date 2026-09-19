@@ -14,9 +14,9 @@
  * 1. `typecheck` — compile both programs against that release's declarations.
  *    This covers every host export the source names statically; a missing one
  *    is a tsc error, so no separate symbol list has to be maintained.
- * 2. `offload` — `src/conversion/host-image-offload.ts` reaches for its symbols
- *    at runtime through a type assertion, which tsc cannot see. Probe that the
- *    release still offers one of the two image-offload vocabularies.
+ * 2. `probe` — whatever the plugin reaches for at runtime behind a type
+ *    assertion, which tsc cannot see. Each plugin owns this check in
+ *    `scripts/compat-probe.mjs`; a plugin without that file skips the layer.
  * 3. `smoke` — install into a pnpm profile shaped like the one `dsh plugin add`
  *    produces, confirm the plugin's own resolution answers with that release,
  *    then run the plugin's `verify:installed` through the real Cordis Loader.
@@ -29,6 +29,7 @@
  */
 
 import { execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { cp, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
@@ -47,8 +48,11 @@ const REBUILT = /^(?:node_modules|lib|\.git)$|\.tgz$/
 /** Fixture packages the installed smoke resolves from the profile root. */
 const PROFILE_FIXTURES = ['@deepseek-ai/cordis-plugin-loader@1.0.3', '@deepseek-ai/cordis@4.0.2']
 
+/** Plugin-owned runtime probe, relative to the project root. */
+const PROBE = 'scripts/compat-probe.mjs'
+
 /** Layer names in execution order, used in reports. */
-export const STAGES = ['typecheck', 'offload', 'smoke']
+export const STAGES = ['typecheck', 'probe', 'smoke']
 
 /**
  * Run a command, capturing output whether it succeeds or fails.
@@ -116,25 +120,18 @@ async function checkTypes(dir) {
 }
 
 /**
- * Layer 2: probe the image-offload vocabulary the runtime seam depends on.
- * Either generation is acceptable; neither means image requests would fail at
- * runtime on a release that type-checks fine.
+ * Layer 2: run the plugin's own runtime probe against the pinned release.
+ *
+ * What has to be probed is plugin-specific — whichever host symbols the source
+ * reaches for through a type assertion, since tsc cannot see those. So the
+ * check lives with the plugin that needs it, and this script only runs it.
  * @param dir - scratch copy with dependencies installed.
- * @returns stage result naming which vocabulary answered.
+ * @returns stage result; a project without a probe reports the skip.
  */
-async function checkOffload(dir) {
-  const probe = `
-    const llm = await import('@deepseek-ai/dsh-llm')
-    const surface = typeof llm.requiredImageOffload === 'function' && typeof llm.projectOffloadedImages === 'function'
-    const route = typeof llm.offloadRequestImagesWithPolicy === 'function'
-    if (surface) console.log('surface-owned offload (requiredImageOffload + projectOffloadedImages)')
-    else if (route) console.log('route-owned offload (offloadRequestImagesWithPolicy)')
-    else {
-      console.error('@deepseek-ai/dsh-llm exposes neither offload vocabulary; image requests cannot be projected')
-      process.exit(1)
-    }
-  `
-  return attempt(process.execPath, ['--input-type=module', '-e', probe], dir)
+async function checkProbe(dir) {
+  const probe = join(dir, PROBE)
+  if (!existsSync(probe)) return { ok: true, output: `no ${PROBE}, nothing reached for at runtime` }
+  return attempt(process.execPath, [probe], dir)
 }
 
 /**
@@ -143,9 +140,11 @@ async function checkOffload(dir) {
  * @param dir - scratch copy with the harness pinned and dependencies installed.
  * @param version - release the profile must carry.
  * @param packageName - plugin package name, used to check resolution.
+ * @param peers - the plugin's declared harness peers; the profile carries these
+ *   pinned to `version`, and the first one witnesses what the plugin resolved.
  * @returns stage result; on success the output ends with the smoke's PASS line.
  */
-async function checkSmoke(dir, version, packageName) {
+async function checkSmoke(dir, version, packageName, peers) {
   const pack = await attempt('npm', ['pack', '--silent'], dir)
   if (!pack.ok) return { ok: false, output: pack.output }
   const tarball = pack.output.trim().split('\n').filter(line => line.endsWith('.tgz')).pop()
@@ -154,26 +153,30 @@ async function checkSmoke(dir, version, packageName) {
   const profile = await mkdtemp(join(tmpdir(), `dsh-profile-${version}-`))
   try {
     await writeFile(join(profile, 'package.json'), `${JSON.stringify({ name: 'dsh-compat-profile', private: true }, null, 2)}\n`)
+    // Every declared peer goes in pinned: pnpm installs missing peers itself,
+    // and left to choose it would pick the newest release the range allows
+    // rather than the one under test.
     const harness = await attempt('pnpm', [
-      'add', '--ignore-scripts',
-      `@deepseek-ai/dsh@${version}`, `@deepseek-ai/dsh-llm@${version}`, ...PROFILE_FIXTURES,
+      'add', '--ignore-scripts', `@deepseek-ai/dsh@${version}`,
+      ...peers.map(name => `${name}@${version}`), ...PROFILE_FIXTURES,
     ], profile)
     if (!harness.ok) return { ok: false, output: harness.output }
     const plugin = await attempt('pnpm', ['add', '--ignore-scripts', join(dir, tarball)], profile)
     if (!plugin.ok) return { ok: false, output: plugin.output }
 
-    const resolved = await resolvedHarness(profile, packageName)
+    const [witness] = peers
+    const resolved = await resolvedHarness(profile, packageName, witness)
     if (resolved !== version) {
       return {
         ok: false,
-        output: `the installed plugin resolves @deepseek-ai/dsh-llm@${resolved}, not ${version};`
+        output: `the installed plugin resolves ${witness}@${resolved}, not ${version};`
           + ' the profile would have tested a different harness',
       }
     }
     const smoke = await attempt('npm', ['run', 'verify:installed', '--silent', '--', profile], dir)
     // Report the resolution alongside the smoke output so every run states
     // which harness it actually exercised, not just that something passed.
-    return { ...smoke, output: `plugin resolves @deepseek-ai/dsh-llm@${resolved}\n${smoke.output}` }
+    return { ...smoke, output: `plugin resolves ${witness}@${resolved}\n${smoke.output}` }
   } finally {
     await rm(profile, { recursive: true, force: true })
   }
@@ -184,14 +187,15 @@ async function checkSmoke(dir, version, packageName) {
  * plugin's own require path rather than the profile root.
  * @param profile - profile directory.
  * @param packageName - plugin package name.
+ * @param witness - harness package whose resolved version is reported.
  * @returns resolved version, or a diagnostic string when resolution fails.
  */
-async function resolvedHarness(profile, packageName) {
+async function resolvedHarness(profile, packageName, witness) {
   const probe = `
     const { createRequire } = require('node:module')
     const root = createRequire(${JSON.stringify(join(profile, 'package.json'))})
     const fromPlugin = createRequire(root.resolve(${JSON.stringify(packageName)}))
-    process.stdout.write(require(fromPlugin.resolve('@deepseek-ai/dsh-llm/package.json')).version)
+    process.stdout.write(require(fromPlugin.resolve(${JSON.stringify(`${witness}/package.json`)})).version)
   `
   const result = await attempt(process.execPath, ['-e', probe], profile)
   return result.ok ? result.output.trim() : `unresolved (${result.output.trim()})`
@@ -205,13 +209,15 @@ async function resolvedHarness(profile, packageName) {
  */
 export async function verifyRelease(projectDir, version) {
   const { json } = await readManifest(projectDir)
+  const peers = Object.keys(json.peerDependencies ?? {}).filter(name => DSH_PACKAGE.test(name))
+  if (peers.length === 0) throw new Error(`${json.name}: no @deepseek-ai/dsh-* peer to verify against`)
   const dir = await copyProject(projectDir, version)
   try {
     await pinHarness(dir, version)
     const layers = [
       ['typecheck', () => checkTypes(dir)],
-      ['offload', () => checkOffload(dir)],
-      ['smoke', () => checkSmoke(dir, version, json.name)],
+      ['probe', () => checkProbe(dir)],
+      ['smoke', () => checkSmoke(dir, version, json.name, peers)],
     ]
     const details = {}
     for (const [stage, execute] of layers) {
