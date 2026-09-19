@@ -4,8 +4,8 @@
     {
       "id": "manager",
       "package": "dsh-x6nux-plugin-hub",
-      "name": "dsh-x6nux-plugin-hub",
-      "description": "Install, update, remove, enable and disable the x6nux DSH plugins from a settings page",
+      "name": "插件管理面板",
+      "description": "在设置页里安装、更新、卸载、启停本仓库的插件，升级用的 cache-buster 自动拼好",
       "version": "0.1.0",
       "tarball": "https://github.com/x6nux/dsh-plugins/releases/download/manager-latest/dsh-x6nux-plugin-hub.tgz"
     },
