@@ -87,8 +87,8 @@ export async function releaseNotes({ project, plugin, tag }) {
     '',
     supported.map(version => `\`${version}\``).join('、'),
     '',
-    '每个版本都在独立的 pnpm profile 中验证过三件事：两个程序对着该版本的类型声明编译、'
-      + '图片卸载词汇探测、以及经真实 Cordis Loader 的加载与流式请求。',
+    '上面每个版本都验证过：两个程序对着该版本的类型声明编译、插件自己的运行时探针（如果有）、'
+      + '以及在独立的 pnpm profile 中确认解析到该版本后经真实 Cordis Loader 加载运行。',
     '',
     `插件包名 \`${json.name}\`，版本 \`${json.version}\`。`,
   ].join('\n')
