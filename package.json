@@ -1,6 +1,6 @@
 {
   "name": "dsh-x6nux-opencode",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "OpenCode Go model provider and settings UI for DeepSeek Harness",
   "type": "module",
   "license": "MIT",

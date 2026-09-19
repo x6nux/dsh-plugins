@@ -18,12 +18,12 @@
 
 插件不发布到 npm，安装源是 GitHub Release 上的 tgz。它是预先构建好的成品，安装时不执行构建脚本，所以不需要在 profile 的 `pnpm-workspace.yaml` 里配置 `allowBuilds`，也不需要任何登录凭证。
 
-最新版本号见 [Releases](https://github.com/x6nux/dsh-plugins/releases?q=opencode)，下面的命令把 `0.2.0` 换成你要装的版本即可。
+下面的 URL 固定指向最新版，资产名不带版本号，不用去查版本。历史版本见 [Releases](https://github.com/x6nux/dsh-plugins/releases?q=opencode)。
 
 ### Web
 
 ```sh
-dsh plugin --profile web add https://github.com/x6nux/dsh-plugins/releases/download/opencode-v0.2.0/dsh-x6nux-opencode-0.2.0.tgz
+dsh plugin --profile web add https://github.com/x6nux/dsh-plugins/releases/download/opencode-latest/dsh-x6nux-opencode.tgz
 ```
 
 安装后启动或重启 `dsh web`：
@@ -39,7 +39,7 @@ API Key 来自你的 OpenCode Go 订阅。安装插件不会自动更改默认�
 安装到 Headless profile：
 
 ```sh
-dsh plugin --profile headless add https://github.com/x6nux/dsh-plugins/releases/download/opencode-v0.2.0/dsh-x6nux-opencode-0.2.0.tgz
+dsh plugin --profile headless add https://github.com/x6nux/dsh-plugins/releases/download/opencode-latest/dsh-x6nux-opencode.tgz
 ```
 
 将以下内容保存为 `headless.patch.yml`，选择默认模型：
@@ -63,15 +63,27 @@ dsh --profile headless --patch ./headless.patch.yml "你好"
 
 ## 升级插件
 
-用同样的 `add` 命令换掉 URL 里的版本号即可：
+URL 不变，但**末尾要加一个会变的查询参数**：
 
 ```sh
-dsh plugin --profile web add https://github.com/x6nux/dsh-plugins/releases/download/opencode-v0.2.1/dsh-x6nux-opencode-0.2.1.tgz
+dsh plugin --profile web add 'https://github.com/x6nux/dsh-plugins/releases/download/opencode-latest/dsh-x6nux-opencode.tgz?v=2'
 ```
+
+每次升级把 `v=` 后面换成一个新值（版本号、日期、随便什么），用过的值不要重复。
+
+这个参数是必须的：pnpm 按 URL 索引它的 tarball 缓存，URL 一模一样时直接复用本地副本，根本不去看远端有没有变化。实测 `remove` 后再 `add`、以及 `add --force` 都拿不到新版本，只有 URL 变了才会重新下载。每个 Release 的说明里都写好了带当次版本号的现成命令，复制即可。
+
+在 zsh / bash 里记得给 URL 加引号（`?` 会被 shell 当通配符）；PowerShell 里不需要。
 
 完成后重启 `dsh web` 并刷新浏览器。Headless 用户将 `web` 换成 `headless`；如果两个 profile 都安装了插件，需要分别升级。
 
 升级无需先卸载，也无需重新填写 API Key。模型目录会自动同步，正常新增模型不需要再次升级插件。
+
+需要锁定某个具体版本（不随 latest 走）时，用带 tag 的 URL：
+
+```sh
+dsh plugin --profile web add https://github.com/x6nux/dsh-plugins/releases/download/opencode-v0.2.0/dsh-x6nux-opencode.tgz
+```
 
 ## 从 `dsh-opencode-go` 迁移
 
@@ -81,7 +93,7 @@ dsh plugin --profile web add https://github.com/x6nux/dsh-plugins/releases/downl
 
 ```sh
 dsh plugin --profile web remove dsh-opencode-go
-dsh plugin --profile web add https://github.com/x6nux/dsh-plugins/releases/download/opencode-v0.2.0/dsh-x6nux-opencode-0.2.0.tgz
+dsh plugin --profile web add https://github.com/x6nux/dsh-plugins/releases/download/opencode-latest/dsh-x6nux-opencode.tgz
 ```
 
 设置命名空间和 provider ID 都没有变，所以已保存的 API Key、baseURL 和各项配置照旧可用，不需要重新填写。
