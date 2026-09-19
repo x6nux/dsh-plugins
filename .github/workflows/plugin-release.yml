@@ -90,3 +90,24 @@ jobs:
             --notes-file notes.md \
             --latest=false \
             "${name}.tgz"
+
+      # plugins.json is what the plugin-hub settings page reads to tell an
+      # installed version from the available one, so it has to name what the
+      # rolling release now holds. `.compat` is already a checkout of main.
+      - name: Record the release in the plugin catalogue
+        working-directory: .compat
+        env:
+          PLUGIN: ${{ inputs.plugin }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          result=$(node scripts/update-manifest.mjs --plugin "$PLUGIN" --project ..)
+          echo "catalogue: $result"
+          if [ "$result" = 'updated' ]; then
+            git add plugins.json
+            git commit -m "$PLUGIN: 清单记录 $(node -p 'require("../package.json").version')"
+            # Another plugin's release may have pushed main in the meantime.
+            git pull --rebase --quiet origin main
+            git push origin HEAD:main
+          fi

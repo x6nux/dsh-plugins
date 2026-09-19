@@ -8,7 +8,8 @@
 
 ```
 main
-├── scripts/            共享脚本：兼容性验证、巡检、Release notes
+├── plugins.json        插件清单：每个插件的包名、当前版本、tgz 地址
+├── scripts/            共享脚本：兼容性验证、巡检、Release notes、清单维护
 └── .github/workflows/  共享工作流（plugin-ci、plugin-release 为 workflow_call；dsh-compat 为定时）
 
 plugin/opencode         OpenCode Go 订阅模型插件（包名 dsh-x6nux-opencode）
@@ -50,6 +51,8 @@ git push origin opencode-v0.2.1
 `plugin-release` 会校验 tag 与 manifest 的版本一致、跑完类型检查和测试、对每个声明兼容的 DSH 版本做一遍完整验证，然后打包出不带版本号的 tgz，建版本化 Release，并重建 `<插件>-latest` 这个滚动 Release 指向同一个包。tag 与 version 不一致会直接失败。
 
 滚动 Release 是删掉重建而不是改资产，这样它的 tag 跟着本次发布的提交走；建它时传 `--latest=false`，GitHub 的 "Latest" 徽章留给版本化 Release。
+
+最后它会把刚发布的版本写回 `main` 的 `plugins.json` 并提交 —— 那份清单是插件管理面板判断"已装版本 vs 可用版本"的依据，必须和滚动 Release 的实际内容一致。清单里的 `name` 和 `description` 是人工维护的展示文案，脚本不会覆盖，只有新插件第一次发版时才从它的 `package.json` 取默认值。
 
 ## 兼容性巡检
 

@@ -1,0 +1,13 @@
+{
+  "repository": "x6nux/dsh-plugins",
+  "plugins": [
+    {
+      "id": "opencode",
+      "package": "dsh-x6nux-opencode",
+      "name": "OpenCode Go",
+      "description": "在 DSH 中使用 OpenCode Go 订阅模型：流式回复、工具调用、图片输入、Web 设置页、套餐用量",
+      "version": "0.2.1",
+      "tarball": "https://github.com/x6nux/dsh-plugins/releases/download/opencode-latest/dsh-x6nux-opencode.tgz"
+    }
+  ]
+}
