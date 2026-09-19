@@ -55,7 +55,16 @@ jobs:
       - run: npm test
       - name: Verify every supported DSH release
         run: node .compat/scripts/compat-verify.mjs --project .
-      - run: npm pack
+      # npm names the tarball after the version; the asset drops it so one
+      # URL can serve every release.
+      - name: Build the versionless tarball
+        run: |
+          set -euo pipefail
+          npm pack --silent >/dev/null
+          name=$(node -p 'require("./package.json").name')
+          version=$(node -p 'require("./package.json").version')
+          mv "${name}-${version}.tgz" "${name}.tgz"
+          ls -l "${name}.tgz"
 
       - name: Publish the release
         env:
@@ -63,9 +72,21 @@ jobs:
           PLUGIN: ${{ inputs.plugin }}
           TAG: ${{ github.ref_name }}
         run: |
-          tarball=$(ls ./*.tgz)
+          set -euo pipefail
+          name=$(node -p 'require("./package.json").name')
+          version=$(node -p 'require("./package.json").version')
           node .compat/scripts/release-notes.mjs --project . --plugin "$PLUGIN" --tag "$TAG" --out notes.md
-          gh release create "$TAG" \
-            --title "$PLUGIN $(node -p 'require("./package.json").version')" \
+
+          # The immutable record of this version.
+          gh release create "$TAG" --title "$PLUGIN $version" --notes-file notes.md "${name}.tgz"
+
+          # The rolling pointer the install URL uses. Recreated rather than
+          # edited so its tag follows the released commit; --latest=false
+          # leaves GitHub's "Latest" badge on the versioned release.
+          gh release delete "${PLUGIN}-latest" --yes --cleanup-tag || true
+          gh release create "${PLUGIN}-latest" \
+            --target "$GITHUB_SHA" \
+            --title "$PLUGIN latest ($version)" \
             --notes-file notes.md \
-            "$tarball"
+            --latest=false \
+            "${name}.tgz"

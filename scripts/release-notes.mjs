@@ -9,6 +9,14 @@
  * the only way this plugin is installed — there is no registry entry to point
  * at — and the compatibility list read from the manifest, so it can never
  * disagree with what the build actually declares.
+ *
+ * The install URL points at the rolling `<plugin>-latest` release and the asset
+ * name carries no version, so it never changes. The upgrade command appends
+ * `?v=<version>`: pnpm indexes its tarball store by URL, and an unchanged URL
+ * is served from that store no matter what the remote now holds — `remove` then
+ * `add`, and `--force`, were both measured to keep the stale copy. A changing
+ * query string is what makes pnpm fetch again, and it is easier to follow than
+ * a version inside the path because only the tail moves.
  */
 
 import { writeFile } from 'node:fs/promises'
@@ -41,21 +49,39 @@ export async function releaseNotes({ project, plugin, tag }) {
   const { json } = await readManifest(project)
   const supported = await readSupported(project)
   const slug = repositorySlug(json)
-  const asset = `${json.name}-${json.version}.tgz`
-  const url = `https://github.com/${slug}/releases/download/${tag}/${asset}`
+  const asset = `${json.name}.tgz`
+  const base = `https://github.com/${slug}/releases/download/${plugin}-latest/${asset}`
+  const pinned = `https://github.com/${slug}/releases/download/${tag}/${asset}`
   return [
     '## 安装',
     '',
     '```sh',
-    `dsh plugin --profile web add ${url}`,
+    `dsh plugin --profile web add ${base}`,
     '```',
     '',
-    '把 `web` 换成你的 profile 名（`headless`、`desktop-tauri` 等），安装后重启 DSH。',
+    '把 `web` 换成你的 profile 名（`headless`、`desktop-tauri` 等），安装后重启 DSH。'
+      + '这个 URL 永远指向最新版，资产名不带版本号，不用去查版本。',
     '',
     '这个 tgz 是预先构建好的成品，安装时不执行任何构建脚本，所以不需要在 profile 的'
       + ' `pnpm-workspace.yaml` 里配置 `allowBuilds`，也不需要任何登录凭证。',
     '',
-    '升级用同样的命令换掉 URL 里的版本号即可，不必先卸载，配置和 API Key 都会保留。',
+    '## 升级',
+    '',
+    '```sh',
+    `dsh plugin --profile web add '${base}?v=${json.version}'`,
+    '```',
+    '',
+    '**升级必须带上这个查询参数。** pnpm 按 URL 索引它的 tarball 缓存，URL 一模一样时直接'
+      + '复用本地副本、根本不去看远端有没有变化——实测 `remove` 后再 `add` 和 `--force` 都拿不到新版本。'
+      + '尾部加一个会变的参数就能让它重新下载；用哪个值不重要，上面填的是本版版本号。',
+    '',
+    '不必先卸载，配置和 API Key 都会保留。',
+    '',
+    '需要锁定这一版（不随 latest 走）时用带 tag 的 URL：',
+    '',
+    '```sh',
+    `dsh plugin --profile web add ${pinned}`,
+    '```',
     '',
     '## 兼容的 DSH 版本',
     '',

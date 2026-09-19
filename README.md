@@ -24,13 +24,17 @@ GitHub Actions 从**触发事件的那个 ref** 读取工作流文件，所以�
 
 ## 安装
 
-插件不发布到 npm。每次发版会把构建好的 tgz 挂在 Release 上，安装源就是那个 URL：
+插件不发布到 npm。每次发版把构建好的 tgz 挂在两个 Release 上：版本化的 `<插件>-v<版本>` 作为不可变记录，滚动的 `<插件>-latest` 作为固定安装地址。资产名不带版本号，所以安装 URL 永不变化：
 
 ```sh
-dsh plugin --profile web add https://github.com/x6nux/dsh-plugins/releases/download/opencode-v0.2.0/dsh-x6nux-opencode-0.2.0.tgz
+dsh plugin --profile web add https://github.com/x6nux/dsh-plugins/releases/download/opencode-latest/dsh-x6nux-opencode.tgz
 ```
 
-tgz 是预构建成品，安装时不执行构建脚本，所以不需要配置 pnpm 的 `allowBuilds`，也不需要任何登录凭证。具体版本和说明见各插件分支的 README 与 [Releases](../../releases)。
+tgz 是预构建成品，安装时不执行构建脚本，所以不需要配置 pnpm 的 `allowBuilds`，也不需要任何登录凭证。
+
+**升级时要在 URL 末尾加一个会变的查询参数**（如 `?v=0.2.1`）。pnpm 按 URL 索引它的 tarball 缓存，URL 一模一样时直接复用本地副本而不去看远端——实测 `remove` 后再 `add` 和 `add --force` 都拿不到新内容，只有 URL 变了才会重新下载。每个 Release 的说明里都带好了现成的升级命令。
+
+具体版本和说明见各插件分支的 README 与 [Releases](../../releases)。
 
 > 不用 GitHub Packages 的原因：它的 npm registry 即使对 public 包也要求 PAT 认证，每台安装机器都得配 `.npmrc`。Release 资产是匿名可下载的。
 
@@ -43,7 +47,9 @@ git tag opencode-v0.2.1
 git push origin opencode-v0.2.1
 ```
 
-`plugin-release` 会校验 tag 与 manifest 的版本一致、跑完类型检查和测试、对每个声明兼容的 DSH 版本做一遍完整验证，然后建 Release 并挂上 tgz。tag 与 version 不一致会直接失败。
+`plugin-release` 会校验 tag 与 manifest 的版本一致、跑完类型检查和测试、对每个声明兼容的 DSH 版本做一遍完整验证，然后打包出不带版本号的 tgz，建版本化 Release，并重建 `<插件>-latest` 这个滚动 Release 指向同一个包。tag 与 version 不一致会直接失败。
+
+滚动 Release 是删掉重建而不是改资产，这样它的 tag 跟着本次发布的提交走；建它时传 `--latest=false`，GitHub 的 "Latest" 徽章留给版本化 Release。
 
 ## 兼容性巡检
 
