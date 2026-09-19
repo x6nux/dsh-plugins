@@ -22,8 +22,8 @@ jobs:
     name: ${{ inputs.plugin }} · typecheck, test, pack
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
           cache: npm
@@ -32,7 +32,7 @@ jobs:
       # pretest builds both artifacts, so this also proves the build works.
       - run: npm test
       - run: npm pack
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.plugin }}-tarball
           path: '*.tgz'
@@ -45,13 +45,13 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Fetch shared scripts from main
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: main
           path: .compat
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       # pnpm ships with corepack on this Node; the compat scripts need it
