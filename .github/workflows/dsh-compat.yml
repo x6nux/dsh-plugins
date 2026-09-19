@@ -1,0 +1,76 @@
+# Watch for DSH releases no plugin branch has been verified against yet.
+#
+# This one lives only on main and needs no caller: `schedule` and
+# `workflow_dispatch` always read the default branch. It walks every
+# `plugin/*` branch, so a new plugin is picked up by creating its branch —
+# there is no list to maintain.
+name: dsh-compat
+
+on:
+  schedule:
+    # Every six hours. Minute 43 rather than 0 so this does not land in the
+    # same second as everyone else's hourly cron.
+    - cron: '43 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Only check this plugin branch; default is every plugin/* branch.'
+        type: string
+        required: false
+      version:
+        description: Check this DSH release instead of discovering new ones.
+        type: string
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so plugin branches can be added as worktrees and
+          # pushed from.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: corepack enable pnpm
+
+      - name: Check every plugin branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ONLY_BRANCH: ${{ inputs.branch }}
+          ONLY_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch --quiet origin '+refs/heads/plugin/*:refs/remotes/origin/plugin/*' || true
+
+          if [ -n "$ONLY_BRANCH" ]; then
+            branches="$ONLY_BRANCH"
+          else
+            # lstrip=3 drops refs/remotes/origin, leaving plugin/<name>.
+            branches=$(git for-each-ref --format='%(refname:lstrip=3)' refs/remotes/origin/plugin)
+          fi
+          if [ -z "$branches" ]; then
+            echo 'no plugin/* branch to check'
+            exit 0
+          fi
+
+          for branch in $branches; do
+            name=${branch#plugin/}
+            dir=".plugins/$name"
+            echo "::group::$branch"
+            git worktree add --quiet --detach "$dir" "origin/$branch"
+            args=(--project "$dir" --branch "$branch" --plugin "$name" --apply)
+            if [ -n "$ONLY_VERSION" ]; then args+=(--version "$ONLY_VERSION"); fi
+            node scripts/compat-watch.mjs "${args[@]}"
+            git worktree remove --force "$dir"
+            echo '::endgroup::'
+          done

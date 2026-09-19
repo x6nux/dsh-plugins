@@ -1,0 +1,64 @@
+# Shared CI for every plugin branch.
+#
+# Workflow files are read from the ref that triggered the event, so a workflow
+# living only on main never runs for a push to a plugin branch. This one is
+# therefore `workflow_call`: each plugin branch keeps a few-line caller that
+# points here, and the logic stays in one place on main.
+name: plugin-ci
+
+on:
+  workflow_call:
+    inputs:
+      plugin:
+        description: Plugin name, used in job titles.
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: ${{ inputs.plugin }} · typecheck, test, pack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      # pretest builds both artifacts, so this also proves the build works.
+      - run: npm test
+      - run: npm pack
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.plugin }}-tarball
+          path: '*.tgz'
+          if-no-files-found: error
+
+  compat:
+    name: ${{ inputs.plugin }} · supported DSH releases
+    # The fast checks gate this one: no point spending minutes building
+    # profiles for a branch that does not even compile.
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch shared scripts from main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: .compat
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      # pnpm ships with corepack on this Node; the compat scripts need it
+      # because npm hoists the newest release satisfying a peer range and
+      # would have the plugin resolve a harness the profile does not carry.
+      - run: corepack enable pnpm
+      # No install here on purpose: compat-verify copies the project, pins the
+      # harness in the copy, and installs there, so dependencies in the
+      # checkout would never be used.
+      - run: node .compat/scripts/compat-verify.mjs --project .

@@ -1,0 +1,71 @@
+# Shared release for every plugin branch.
+#
+# Called from a plugin branch's own caller on a `<plugin>-v*` tag push. Tags are
+# prefixed with the plugin name because one repository carries several plugins,
+# each on its own branch.
+#
+# Nothing is published to a registry: the artifact is a prebuilt tarball on the
+# GitHub Release, which installs with no credentials and runs no build scripts
+# on the installing machine. GitHub Packages would require every installer to
+# configure a PAT even for a public package.
+name: plugin-release
+
+on:
+  workflow_call:
+    inputs:
+      plugin:
+        description: Plugin name; must match the tag prefix.
+        type: string
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: ${{ inputs.plugin }} · release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch shared scripts from main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: .compat
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: corepack enable pnpm
+      - run: npm ci
+
+      - name: Check the tag matches the manifest
+        env:
+          PLUGIN: ${{ inputs.plugin }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=$(node -p 'require("./package.json").version')
+          expected="${PLUGIN}-v${version}"
+          if [ "$TAG" != "$expected" ]; then
+            echo "tag $TAG does not match package.json ($expected)" >&2
+            exit 1
+          fi
+
+      - run: npm run typecheck
+      - run: npm test
+      - name: Verify every supported DSH release
+        run: node .compat/scripts/compat-verify.mjs --project .
+      - run: npm pack
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLUGIN: ${{ inputs.plugin }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          tarball=$(ls ./*.tgz)
+          node .compat/scripts/release-notes.mjs --project . --plugin "$PLUGIN" --tag "$TAG" --out notes.md
+          gh release create "$TAG" \
+            --title "$PLUGIN $(node -p 'require("./package.json").version')" \
+            --notes-file notes.md \
+            "$tarball"
