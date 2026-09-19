@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { HubSection } from '../src/client/Section.tsx'
 import type { HubSectionProps } from '../src/client/Section.tsx'
 import { ManagementUnavailable } from '../src/client/hub-controller.ts'
+import type { HubMode } from '../src/client/hub-controller.ts'
 import type { HubRow, Outcome } from '../src/client/hub.ts'
 import { en } from '../src/client/locales.ts'
 
@@ -20,6 +21,9 @@ const t = (key: keyof typeof en, params?: Record<string, unknown>): string =>
     (text, [name, value]) => text.replaceAll(`{${name}}`, String(value)),
     en[key] as string,
   )
+
+/** The action callback's signature, so `mock.calls` keeps its argument types. */
+type Act = NonNullable<HubSectionProps['act']>
 
 const entry = {
   id: 'opencode',
@@ -35,9 +39,9 @@ function row(overrides: Partial<HubRow> = {}): HubRow {
 }
 
 /** Render the page with a stubbed face and wait for the first load to settle. */
-async function mount(rows: HubRow[], act?: HubSectionProps['act']) {
-  const load = vi.fn(() => Promise.resolve(rows))
-  const fallback = vi.fn(() => Promise.resolve<Outcome>({ kind: 'applied' }))
+async function mount(rows: HubRow[], act?: HubSectionProps['act'], mode: HubMode = 'manage') {
+  const load = vi.fn(() => Promise.resolve({ mode, rows }))
+  const fallback = vi.fn<Act>(() => Promise.resolve<Outcome>({ kind: 'applied' }))
   const onChanged = vi.fn(() => () => {})
   render(<HubSection t={t} load={load} act={act ?? fallback} onChanged={onChanged} />)
   await waitFor(() => { expect(screen.getByText(entry.name)).toBeTruthy() })
@@ -51,7 +55,7 @@ describe('plugin hub page', () => {
   })
 
   it('offers install for a plugin the profile does not hold', async () => {
-    const act = vi.fn(() => Promise.resolve<Outcome>({ kind: 'applied' }))
+    const act = vi.fn<Act>(() => Promise.resolve<Outcome>({ kind: 'applied' }))
     await mount([row()], act)
     expect(screen.getByText(t('statusNotInstalled'))).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: t('install') }))
@@ -60,7 +64,7 @@ describe('plugin hub page', () => {
   })
 
   it('offers update for an outdated plugin and names both versions', async () => {
-    const act = vi.fn(() => Promise.resolve<Outcome>({ kind: 'applied' }))
+    const act = vi.fn<Act>(() => Promise.resolve<Outcome>({ kind: 'applied' }))
     await mount([row({ status: { kind: 'outdated', installed: '0.2.0' }, enabled: true, removable: true })], act)
     expect(screen.getByText(t('statusOutdated', { installed: '0.2.0', version: '0.2.1' }))).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: t('update') }))
@@ -74,7 +78,7 @@ describe('plugin hub page', () => {
   })
 
   it('removes an installed plugin the harness says is removable', async () => {
-    const act = vi.fn(() => Promise.resolve<Outcome>({ kind: 'applied' }))
+    const act = vi.fn<Act>(() => Promise.resolve<Outcome>({ kind: 'applied' }))
     await mount([row({ status: { kind: 'current' }, enabled: true, removable: true })], act)
     fireEvent.click(screen.getByRole('button', { name: t('remove') }))
     await waitFor(() => { expect(act.mock.calls[0]?.[0]).toBe('remove') })
@@ -86,14 +90,14 @@ describe('plugin hub page', () => {
   })
 
   it('switches a plugin off and back on', async () => {
-    const act = vi.fn(() => Promise.resolve<Outcome>({ kind: 'applied' }))
+    const act = vi.fn<Act>(() => Promise.resolve<Outcome>({ kind: 'applied' }))
     const { unmount } = { unmount: cleanup }
     await mount([row({ status: { kind: 'current' }, enabled: true, removable: true })], act)
     fireEvent.click(screen.getByRole('switch', { name: t('enabledLabel') }))
     await waitFor(() => { expect(act.mock.calls[0]?.[0]).toBe('disable') })
     unmount()
 
-    const enable = vi.fn(() => Promise.resolve<Outcome>({ kind: 'applied' }))
+    const enable = vi.fn<Act>(() => Promise.resolve<Outcome>({ kind: 'applied' }))
     await mount([row({ status: { kind: 'current' }, enabled: false, removable: true })], enable)
     expect(screen.getByText(t('statusDisabled'))).toBeTruthy()
     fireEvent.click(screen.getByRole('switch', { name: t('enabledLabel') }))
@@ -102,7 +106,7 @@ describe('plugin hub page', () => {
 
   // A saved-but-not-live change reads as success unless the page says otherwise.
   it('tells the user to restart when the change is not live yet', async () => {
-    const act = vi.fn(() => Promise.resolve<Outcome>({ kind: 'restart-required' }))
+    const act = vi.fn<Act>(() => Promise.resolve<Outcome>({ kind: 'restart-required' }))
     await mount([row()], act)
     fireEvent.click(screen.getByRole('button', { name: t('install') }))
     await waitFor(() => { expect(screen.getByText(t('outcomeRestart'))).toBeTruthy() })
@@ -123,11 +127,41 @@ describe('plugin hub page', () => {
   })
 
   it('translates a failure code instead of showing the raw code', async () => {
-    const act = vi.fn(() => Promise.resolve<Outcome>({ kind: 'failed', code: 'bundle-in-use' }))
+    const act = vi.fn<Act>(() => Promise.resolve<Outcome>({ kind: 'failed', code: 'bundle-in-use' }))
     await mount([row({ status: { kind: 'current' }, enabled: true, removable: true })], act)
     fireEvent.click(screen.getByRole('button', { name: t('remove') }))
     await waitFor(() => {
       expect(screen.getByText(t('outcomeFailed', { reason: t('errorBundleInUse') }))).toBeTruthy()
+    })
+  })
+
+  // On 0.1.5-rc.2 and 0.1.6-alpha.1 the harness has no pluginManager, so the
+  // page must not offer buttons it cannot honour.
+  describe('on a harness that can only read the inventory', () => {
+    it('offers commands instead of buttons', async () => {
+      await mount([row({ status: { kind: 'unknown-version' }, enabled: true })], undefined, 'read-only')
+      expect(screen.queryByRole('button', { name: t('install') })).toBeNull()
+      expect(screen.queryByRole('button', { name: t('remove') })).toBeNull()
+      expect(screen.queryByRole('switch', { name: t('enabledLabel') })).toBeNull()
+      expect(screen.getByText(`dsh plugin --profile web add '${entry.tarball}?v=${entry.version}'`)).toBeTruthy()
+      expect(screen.getByText(`dsh plugin --profile web remove ${entry.package}`)).toBeTruthy()
+    })
+
+    it('says why the page is read-only and that switching needs a newer DSH', async () => {
+      await mount([row()], undefined, 'read-only')
+      expect(screen.getByText(t('readOnlyMode'))).toBeTruthy()
+      expect(screen.getByText(t('readOnlyToggle'))).toBeTruthy()
+    })
+
+    it('offers no remove command for a plugin that is not installed', async () => {
+      await mount([row()], undefined, 'read-only')
+      expect(screen.getByText(`dsh plugin --profile web add '${entry.tarball}?v=${entry.version}'`)).toBeTruthy()
+      expect(screen.queryByText(`dsh plugin --profile web remove ${entry.package}`)).toBeNull()
+    })
+
+    it('marks a plugin whose fiber failed to load', async () => {
+      await mount([row({ status: { kind: 'failed' }, enabled: true })], undefined, 'read-only')
+      expect(screen.getByText(t('statusFailed'))).toBeTruthy()
     })
   })
 
@@ -147,7 +181,7 @@ describe('plugin hub page', () => {
 
   it('reloads when the harness reports a change made elsewhere', async () => {
     let notify = (): void => {}
-    const load = vi.fn(() => Promise.resolve([row()]))
+    const load = vi.fn(() => Promise.resolve({ mode: 'manage' as HubMode, rows: [row()] }))
     render(
       <HubSection
         t={t}

@@ -32,9 +32,10 @@ export type { HubRow, HubStatus, Manifest, ManifestEntry, Outcome } from './hub.
 export type { HubAction, HubFace } from './hub-controller.ts'
 
 /**
- * Required services. `remote.pluginManager` is deliberately absent: it is
- * injected softly inside the face so a harness without plugin management still
- * shows this page with an explanation instead of dropping it.
+ * Required services. Neither plugin namespace is named here: `pluginManager`
+ * exists only from `0.1.6-alpha.2` on, and requiring it would drop this plugin
+ * entirely on the releases before it — where it still has a read-only page to
+ * show. The face reads whichever namespace the harness carries at call time.
  */
 export const inject = ['slots', 'locale', 'remote']
 

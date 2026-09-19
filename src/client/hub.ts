@@ -8,7 +8,53 @@
  * @module dsh-x6nux-plugin-hub/client/hub
  */
 
-import type { BundleInfo, ChangeResult } from '@deepseek-ai/dsh-api-remotes/client'
+/*
+ * The harness shapes below are declared here rather than imported from
+ * `@deepseek-ai/dsh-api-remotes/client`. `@deepseek-ai/dsh-plugin-manager` —
+ * which contributes `BundleInfo`, `ChangeResult` and the `pluginManager`
+ * remote — first shipped in `0.1.6-alpha.2`, so importing those names would
+ * stop this plugin from compiling against the two releases before it, on which
+ * it still has a job to do (see {@link mergeInventoryRows}).
+ *
+ * Only the fields this page reads are declared, so a harness that adds fields
+ * stays compatible. `scripts/compat-probe.mjs` checks each supported release
+ * still carries the methods these shapes are handed to, which is the part tsc
+ * can no longer see.
+ */
+
+/** One installed bundle, as `pluginManager.listBundles()` reports it. */
+export interface BundleInfo {
+  readonly name: string
+  readonly version?: string
+  readonly enabled: boolean
+  /** False for a bundle the profile knows of but does not hold. */
+  readonly installed: boolean
+  readonly removable: boolean
+  /** Why the harness refuses to change this bundle, when it does. */
+  readonly readOnlyReason?: string
+}
+
+/** What a `pluginManager` mutation answers with. */
+export interface ChangeResult {
+  readonly application: 'applied' | 'restart-required' | 'overridden' | 'failed' | 'cancelled'
+  readonly error?: { readonly code?: string; readonly diagnostic?: string }
+  /** Packages whose install scripts pnpm refused to run. */
+  readonly pendingBuilds?: readonly string[]
+}
+
+/** One Loader entry in the read-only inventory every supported release offers. */
+export interface InventoryEntry {
+  /** Module specifier the Loader entry imports, which is the package name. */
+  readonly moduleName: string
+  readonly enabled: boolean
+  /** Root-fiber lifecycle, `'failed'` when the entry threw while loading. */
+  readonly fiberPhase: 'pending' | 'loading' | 'active' | 'failed' | 'unloading' | null
+}
+
+/** The `pluginInventory.list()` snapshot. */
+export interface InventorySnapshot {
+  readonly entries: readonly InventoryEntry[]
+}
 
 /** Where the catalogue lives; the repository's own copy on the default branch. */
 export const MANIFEST_URL = 'https://raw.githubusercontent.com/x6nux/dsh-plugins/main/plugins.json'
@@ -38,8 +84,10 @@ export type HubStatus =
   | { kind: 'not-installed' }
   | { kind: 'current' }
   | { kind: 'outdated'; installed: string }
-  /** Installed, but the bundle reports no version to compare. */
+  /** Installed, but the source of truth reports no version to compare. */
   | { kind: 'unknown-version' }
+  /** Installed, and its root fiber threw while loading. */
+  | { kind: 'failed' }
 
 /** One rendered row: the catalogue entry plus the local facts. */
 export interface HubRow {
@@ -135,6 +183,60 @@ function statusOf(entry: ManifestEntry, bundle: BundleInfo | undefined): HubStat
   if (bundle.version === undefined || bundle.version.length === 0) return { kind: 'unknown-version' }
   if (compareVersions(bundle.version, entry.version) < 0) return { kind: 'outdated', installed: bundle.version }
   return { kind: 'current' }
+}
+
+/**
+ * Join the catalogue with the read-only Loader inventory.
+ *
+ * This is what the page has to work with on a release without
+ * `pluginManager`: the inventory names the module each Loader entry imports
+ * and whether it is enabled, but carries no version, so an installed plugin
+ * can only be reported as present, not as out of date. Every row is marked
+ * unremovable because nothing here can change the profile.
+ *
+ * @param manifest - the catalogue.
+ * @param snapshot - `pluginInventory.list()` result.
+ * @returns one row per catalogue entry, catalogue order preserved.
+ */
+export function mergeInventoryRows(manifest: Manifest, snapshot: InventorySnapshot): HubRow[] {
+  const byModule = new Map(snapshot.entries.map(entry => [entry.moduleName, entry]))
+  return manifest.plugins.map((plugin) => {
+    const entry = byModule.get(plugin.package)
+    if (entry === undefined) {
+      return { entry: plugin, status: { kind: 'not-installed' }, enabled: false, removable: false }
+    }
+    return {
+      entry: plugin,
+      status: entry.fiberPhase === 'failed' ? { kind: 'failed' } : { kind: 'unknown-version' },
+      enabled: entry.enabled,
+      removable: false,
+    }
+  })
+}
+
+/**
+ * The `dsh plugin` command that installs or updates one plugin.
+ *
+ * `dsh plugin --profile <name> <args>` forwards its arguments to pnpm in the
+ * profile directory, so this is a pnpm `add` of the same spec the managed path
+ * hands to `installBundle` — cache-buster included, for the same reason.
+ *
+ * @param entry - catalogue entry.
+ * @param profile - profile name, `web` unless the deployment renamed it.
+ * @returns the command to copy.
+ */
+export function installCommand(entry: ManifestEntry, profile = 'web'): string {
+  return `dsh plugin --profile ${profile} add '${installSpec(entry)}'`
+}
+
+/**
+ * The `dsh plugin` command that removes one plugin.
+ * @param entry - catalogue entry.
+ * @param profile - profile name.
+ * @returns the command to copy.
+ */
+export function removeCommand(entry: ManifestEntry, profile = 'web'): string {
+  return `dsh plugin --profile ${profile} remove ${entry.package}`
 }
 
 /**

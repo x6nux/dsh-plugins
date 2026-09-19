@@ -7,13 +7,20 @@ export const en = {
   refresh: 'Refresh',
   loading: 'Reading the catalogue…',
   manifestFailed: 'Could not read the plugin catalogue: {reason}',
-  managerUnavailable: 'This harness does not expose plugin management, so nothing can be changed from here.',
+  managerUnavailable: 'This harness exposes no plugin namespace, so nothing can be shown or changed from here.',
   empty: 'The catalogue lists no plugins.',
+
+  readOnlyMode: 'This DSH release cannot change plugins from a page — that arrived in 0.1.6-alpha.2. The rows below are read-only; use the commands to change anything, then restart DSH.',
+  readOnlyProfile: 'Replace web with your profile name if it is not the web one.',
+  readOnlyToggle: 'Switching a plugin on or off has no CLI equivalent; it needs DSH 0.1.6-alpha.2 or newer.',
+  commandInstall: 'Install or update',
+  commandRemove: 'Remove',
 
   statusNotInstalled: 'Not installed',
   statusCurrent: 'Up to date · {version}',
   statusOutdated: '{installed} → {version}',
   statusUnknownVersion: 'Installed, version unknown',
+  statusFailed: 'Installed, failed to load',
   statusDisabled: 'Disabled',
   readOnly: 'Managed elsewhere',
 
@@ -51,13 +58,20 @@ export const zh: Record<keyof typeof en, string> = {
   refresh: '刷新',
   loading: '正在读取插件清单…',
   manifestFailed: '读取插件清单失败：{reason}',
-  managerUnavailable: '当前 DSH 未提供插件管理能力，这里无法做任何更改。',
+  managerUnavailable: '当前 DSH 没有暴露任何插件命名空间，这里既读不到也改不了。',
   empty: '清单里没有插件。',
+
+  readOnlyMode: '当前 DSH 版本不支持从页面更改插件——这个能力 0.1.6-alpha.2 才有。下面的状态只读，改动请用命令，改完重启 DSH。',
+  readOnlyProfile: '若你的 profile 不叫 web，把命令里的 web 换掉。',
+  readOnlyToggle: '启用/禁用没有对应的命令行写法，需要 DSH 0.1.6-alpha.2 或更新版本。',
+  commandInstall: '安装 / 更新',
+  commandRemove: '卸载',
 
   statusNotInstalled: '未安装',
   statusCurrent: '已是最新 · {version}',
   statusOutdated: '{installed} → {version}',
   statusUnknownVersion: '已安装，版本未知',
+  statusFailed: '已安装，加载失败',
   statusDisabled: '已禁用',
   readOnly: '由别处管理',
 

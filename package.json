@@ -1,6 +1,6 @@
 {
   "name": "dsh-x6nux-plugin-hub",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Install, update, remove, enable and disable the x6nux DSH plugins from a settings page",
   "type": "module",
   "license": "MIT",
@@ -50,16 +50,16 @@
     "typecheck": "tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit",
     "test": "vitest run",
     "prepack": "npm run build",
-    "pretest": "npm run build",
+    "pretest": "tsc -p tsconfig.test.json && npm run build",
     "verify:installed": "node scripts/installed-smoke.mjs"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.2",
-    "@deepseek-ai/dsh-api-remotes": "0.1.6-alpha.2",
-    "@deepseek-ai/dsh-client-locale": "0.1.6-alpha.2",
-    "@deepseek-ai/dsh-client-ui-renderer": "0.1.6-alpha.2",
-    "@deepseek-ai/dsh-client-ui-settings": "0.1.6-alpha.2",
-    "@deepseek-ai/dsh-client-ui-slots": "0.1.6-alpha.2"
+    "@deepseek-ai/dsh-api-remotes": "0.1.5-rc.2 || 0.1.6-alpha.1 || 0.1.6-alpha.2",
+    "@deepseek-ai/dsh-client-locale": "0.1.5-rc.2 || 0.1.6-alpha.1 || 0.1.6-alpha.2",
+    "@deepseek-ai/dsh-client-ui-renderer": "0.1.5-rc.2 || 0.1.6-alpha.1 || 0.1.6-alpha.2",
+    "@deepseek-ai/dsh-client-ui-settings": "0.1.5-rc.2 || 0.1.6-alpha.1 || 0.1.6-alpha.2",
+    "@deepseek-ai/dsh-client-ui-slots": "0.1.5-rc.2 || 0.1.6-alpha.1 || 0.1.6-alpha.2"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-api-remotes": {

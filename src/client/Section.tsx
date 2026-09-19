@@ -11,8 +11,9 @@ import { useCallback, useEffect, useState } from 'react'
 import type { InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
 import { Button, Switch, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { TagTone } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { HubAction, HubFace } from './hub-controller.ts'
+import type { HubAction, HubFace, HubMode, HubView } from './hub-controller.ts'
 import { ManagementUnavailable } from './hub-controller.ts'
+import { installCommand, removeCommand } from './hub.ts'
 import type { HubRow, Outcome } from './hub.ts'
 import type { HubKey } from './locales.ts'
 import css from './Section.module.css'
@@ -74,6 +75,7 @@ export function outcomeText(t: HubTranslate, outcome: Outcome): string {
 function statusBadge(t: HubTranslate, row: HubRow): { text: string; tone: TagTone } {
   const { entry, status } = row
   if (status.kind === 'not-installed') return { text: t('statusNotInstalled'), tone: 'quiet' }
+  if (status.kind === 'failed') return { text: t('statusFailed'), tone: 'danger' }
   if (!row.enabled) return { text: t('statusDisabled'), tone: 'neutral' }
   if (status.kind === 'outdated') {
     return { text: t('statusOutdated', { installed: status.installed, version: entry.version }), tone: 'warning' }
@@ -85,27 +87,43 @@ function statusBadge(t: HubTranslate, row: HubRow): { text: string; tone: TagTon
 interface PluginRowProps {
   row: HubRow
   t: HubTranslate
+  mode: HubMode
   busy: boolean
   outcome?: Outcome
   onAct: (action: HubAction, row: HubRow) => void
 }
 
-/** One catalogue plugin. */
-function PluginRow(props: PluginRowProps) {
-  const { row, t, busy, outcome } = props
-  const badge = statusBadge(t, row)
+/**
+ * The commands that do this row's work on a harness that cannot do it itself.
+ * Only install/update and remove are offered because `dsh plugin` forwards to
+ * pnpm, which has no notion of a disabled package.
+ */
+function RowCommands(props: { row: HubRow; t: HubTranslate }) {
+  const { row, t } = props
   const installed = row.status.kind !== 'not-installed'
-  const locked = row.readOnlyReason !== undefined
   return (
-    <li className={css.row}>
-      <div className={css.head}>
-        <span className={css.name}>{row.entry.name}</span>
-        <Tag tone={badge.tone}>{badge.text}</Tag>
-        {locked ? <Tag tone="outline">{t('readOnly')}</Tag> : null}
-      </div>
-      <p className={css.description}>{row.entry.description}</p>
-      <div className={css.actions}>
-        {!installed
+    <div className={css.commands}>
+      <p className={css.commandLabel}>{t('commandInstall')}</p>
+      <code className={css.command}>{installCommand(row.entry)}</code>
+      {installed
+        ? (
+          <>
+            <p className={css.commandLabel}>{t('commandRemove')}</p>
+            <code className={css.command}>{removeCommand(row.entry)}</code>
+          </>
+        )
+        : null}
+    </div>
+  )
+}
+
+/** The buttons a managing harness can honour. */
+function RowActions(props: Omit<PluginRowProps, 'mode' | 'outcome'> & { locked: boolean }) {
+  const { row, t, busy, locked } = props
+  const installed = row.status.kind !== 'not-installed'
+  return (
+    <div className={css.actions}>
+      {!installed
           ? (
             <Button
               variant="primary"
@@ -152,7 +170,26 @@ function PluginRow(props: PluginRowProps) {
             />
           )
           : null}
+    </div>
+  )
+}
+
+/** One catalogue plugin. */
+function PluginRow(props: PluginRowProps) {
+  const { row, t, mode, busy, outcome } = props
+  const badge = statusBadge(t, row)
+  const locked = row.readOnlyReason !== undefined
+  return (
+    <li className={css.row}>
+      <div className={css.head}>
+        <span className={css.name}>{row.entry.name}</span>
+        <Tag tone={badge.tone}>{badge.text}</Tag>
+        {locked ? <Tag tone="outline">{t('readOnly')}</Tag> : null}
       </div>
+      <p className={css.description}>{row.entry.description}</p>
+      {mode === 'read-only'
+        ? <RowCommands row={row} t={t} />
+        : <RowActions row={row} t={t} busy={busy} locked={locked} onAct={props.onAct} />}
       {outcome === undefined ? null : <p className={css.outcome}>{outcomeText(t, outcome)}</p>}
     </li>
   )
@@ -161,7 +198,7 @@ function PluginRow(props: PluginRowProps) {
 /** The page once every injected seat is present. */
 function Loaded(props: HubSectionInjected) {
   const { t, load, act, onChanged } = props
-  const [rows, setRows] = useState<readonly HubRow[] | undefined>(undefined)
+  const [view, setView] = useState<HubView | undefined>(undefined)
   const [failure, setFailure] = useState<string | undefined>(undefined)
   const [unavailable, setUnavailable] = useState(false)
   const [busy, setBusy] = useState<string | undefined>(undefined)
@@ -172,7 +209,7 @@ function Loaded(props: HubSectionInjected) {
 
   const refresh = useCallback(async () => {
     try {
-      setRows(await load())
+      setView(await load())
       setFailure(undefined)
       setUnavailable(false)
     } catch (error) {
@@ -216,19 +253,29 @@ function Loaded(props: HubSectionInjected) {
       <p className={css.intro}>{t('intro')}</p>
       {unavailable ? <p className={css.notice}>{t('managerUnavailable')}</p> : null}
       {failure === undefined ? null : <p className={css.notice}>{t('manifestFailed', { reason: failure })}</p>}
-      {rows === undefined && !unavailable && failure === undefined
+      {view?.mode === 'read-only'
+        ? (
+          <div className={css.banner}>
+            <p className={css.notice}>{t('readOnlyMode')}</p>
+            <p className={css.notice}>{t('readOnlyProfile')}</p>
+            <p className={css.notice}>{t('readOnlyToggle')}</p>
+          </div>
+        )
+        : null}
+      {view === undefined && !unavailable && failure === undefined
         ? <p className={css.notice}>{t('loading')}</p>
         : null}
-      {rows !== undefined && rows.length === 0 ? <p className={css.notice}>{t('empty')}</p> : null}
-      {rows === undefined
+      {view !== undefined && view.rows.length === 0 ? <p className={css.notice}>{t('empty')}</p> : null}
+      {view === undefined
         ? null
         : (
           <ul className={css.list}>
-            {rows.map(row => (
+            {view.rows.map(row => (
               <PluginRow
                 key={row.entry.package}
                 row={row}
                 t={t}
+                mode={view.mode}
                 busy={busy === row.entry.package}
                 {...outcomes[row.entry.package] === undefined ? {} : { outcome: outcomes[row.entry.package] }}
                 onAct={run}

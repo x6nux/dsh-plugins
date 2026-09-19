@@ -6,11 +6,20 @@ DSH 插件：在设置页里安装、更新、卸载、启用、禁用 [x6nux/ds
 
 ## 兼容的 DSH 版本
 
-`0.1.6-alpha.2`
+`0.1.5-rc.2`、`0.1.6-alpha.1`、`0.1.6-alpha.2`
 
-插件管理能力由 DSH 自身提供（`pluginManager` 远端），而这个远端是 `0.1.6-alpha.2` 才加进 `dsh-api-remotes` 装配的——`0.1.5-rc.1`、`0.1.5-rc.2`、`0.1.6-alpha.1` 的装配里没有它，装上本插件也无从管理任何东西，所以不列为兼容版本。同仓库的其他插件仍兼容那三个版本。
+**但能做的事按 DSH 版本分两档**，这不是取舍而是宿主能力的事实：
 
-更新的 DSH 版本由仓库的兼容性巡检自动验证并加进这个列表。若某个部署没有开放管理能力，设置页照常打开，只显示一条说明而不提供操作按钮。
+| DSH | 页面能做什么 |
+| --- | --- |
+| `0.1.6-alpha.2` | 安装、更新、卸载、启用、禁用，全在页面里完成 |
+| `0.1.5-rc.2`、`0.1.6-alpha.1` | 只读：显示已装/未装、是否启用、是否加载失败，并给出现成的命令行 |
+
+原因：执行这些改动的 `pluginManager` 远端来自 `@deepseek-ai/dsh-plugin-manager`，而那个包只在 `0.1.6-alpha.2` 起才存在。更早的版本只提供只读的 `pluginInventory`，host 侧根本没有可调用的装卸服务——页面在那两个版本上不会伪造按钮，而是把对应的 `dsh plugin` 命令直接写出来。
+
+启用/禁用在只读档没有对应命令：`dsh plugin` 是把参数转发给 pnpm，而 pnpm 没有"已安装但禁用"的概念。那档要启停就得升级 DSH。
+
+更新的 DSH 版本由仓库的兼容性巡检自动验证并加进这个列表。页面不靠版本号判断，而是看宿主实际暴露了哪个命名空间，所以任何一档都不会走错分支。
 
 ## 安装
 
@@ -24,7 +33,7 @@ dsh plugin --profile web add https://github.com/x6nux/dsh-plugins/releases/downl
 
 插件是预先构建好的成品，安装时不执行构建脚本，不需要 `allowBuilds`，也不需要登录凭证。历史版本见 [Releases](https://github.com/x6nux/dsh-plugins/releases?q=manager)。
 
-## 使用
+## 使用（`0.1.6-alpha.2`）
 
 页面按仓库清单列出每个插件，一行一个：
 
@@ -41,6 +50,21 @@ dsh plugin --profile web add https://github.com/x6nux/dsh-plugins/releases/downl
 - 别处（命令行、其他窗口）做的改动会通过 DSH 的变更事件推送过来，列表自动刷新。
 
 更新管理器自己也走同一个「更新」按钮，新界面在重启后出现。
+
+## 使用（`0.1.5-rc.2`、`0.1.6-alpha.1`）
+
+页面顶部会说明当前 DSH 不能从页面改插件，每行给出这个插件对应的命令：
+
+```sh
+# 安装 / 更新（?v= 由页面按清单版本填好）
+dsh plugin --profile web add 'https://github.com/x6nux/dsh-plugins/releases/download/opencode-latest/dsh-x6nux-opencode.tgz?v=0.2.1'
+# 卸载
+dsh plugin --profile web remove dsh-x6nux-opencode
+```
+
+状态来自 DSH 的只读 `pluginInventory`：已装/未装、是否启用、以及**加载失败**（插件抛异常时 `fiberPhase` 为 `failed`）。这一档看不到已装版本号——inventory 不提供版本，所以行上只写「已安装，版本未知」，不会假装知道有没有新版。
+
+执行完命令重启 DSH，回到页面点「刷新」。
 
 ## 清单
 

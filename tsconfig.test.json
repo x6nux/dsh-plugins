@@ -1,0 +1,18 @@
+// Tests are type-checked against the development harness only. They are
+// deliberately outside `npm run typecheck`, which compat-verify runs against
+// every supported release: the tests assert the harness shapes this plugin
+// declares structurally, and the harness names they compare to exist on the
+// newest release alone.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "declaration": false,
+    "emitDeclarationOnly": false
+  },
+  "include": [
+    "src/**/*",
+    "tests/**/*"
+  ]
+}
