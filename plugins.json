@@ -2,6 +2,14 @@
   "repository": "x6nux/dsh-plugins",
   "plugins": [
     {
+      "id": "manager",
+      "package": "dsh-x6nux-plugin-hub",
+      "name": "dsh-x6nux-plugin-hub",
+      "description": "Install, update, remove, enable and disable the x6nux DSH plugins from a settings page",
+      "version": "0.1.0",
+      "tarball": "https://github.com/x6nux/dsh-plugins/releases/download/manager-latest/dsh-x6nux-plugin-hub.tgz"
+    },
+    {
       "id": "opencode",
       "package": "dsh-x6nux-opencode",
       "name": "OpenCode Go",
