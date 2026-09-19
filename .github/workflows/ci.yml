@@ -7,6 +7,7 @@ on:
   push:
     branches: ['plugin/**']
   pull_request:
+  workflow_dispatch:
 
 jobs:
   ci:
